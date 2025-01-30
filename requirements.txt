@@ -1,0 +1,18 @@
+# FastAPI & ASGI Server
+fastapi
+uvicorn
+
+# AI/NLP (For Task Parsing)
+openai
+langchain
+
+# Database (Optional)
+sqlalchemy
+psycopg2  # If using PostgreSQL
+
+# Background Tasks & Caching (Optional)
+celery
+redis
+
+# Deployment & Observability (Optional)
+gunicorn
