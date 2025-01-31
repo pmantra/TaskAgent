@@ -16,3 +16,4 @@ redis
 
 # Deployment & Observability (Optional)
 gunicorn
+python-dotenv
