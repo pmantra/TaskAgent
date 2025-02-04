@@ -1,9 +1,14 @@
+from typing import List
+
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from api.database import get_db
+from api.database import get_db, get_all_tasks
 from api.database import store_task
 from api.config import client
-from api.models.schemas import TaskInput
+from api.models.dbmodels import Task
+from api.models.schemas import TaskInput, TaskOutput
 
 from api.utils.postprocess import process_parsed_task
 
@@ -40,3 +45,11 @@ async def parse_task(task: TaskInput, db: Session = Depends(get_db)):
     store_task(db, parsed_task)
 
     return {"success": True, "task": parsed_task}
+
+
+@router.get("/", response_model=List[TaskOutput])
+async def get_tasks(db: AsyncSession = Depends(get_db)):
+    """
+    Retrieves all tasks from the database asynchronously.
+    """
+    return await get_all_tasks(db=db)

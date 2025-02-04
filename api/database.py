@@ -1,8 +1,12 @@
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import Session
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from typing import List
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from api.models.dbmodels import Task
+from api.models.schemas import TaskOutput
 
 # Database connection URL (update with your credentials)
 DATABASE_URL = "postgresql+asyncpg://postgres:agent@localhost/taskagent"
@@ -39,3 +43,11 @@ def store_task(db: Session, parsed_task: dict):
     db.commit()
     db.refresh(db_task)
     return db_task.id
+
+
+async def get_all_tasks(db: AsyncSession) -> List[TaskOutput]:
+    """Retrieves all tasks asynchronously from the database and converts to Pydantic models."""
+    result = await db.execute(select(Task))
+    tasks = result.scalars().all()
+
+    return [TaskOutput.model_validate(task) for task in tasks]
