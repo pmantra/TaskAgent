@@ -12,6 +12,17 @@ class TaskInput(BaseModel):
     description: str
 
 
+class TaskUpdate(BaseModel):
+    """Schema for updating a task"""
+    name: Optional[str] = None
+    due_date: Optional[date] = None
+    priority: Optional[str] = None
+    category: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class TaskOutput(BaseModel):
     id: int
     name: str

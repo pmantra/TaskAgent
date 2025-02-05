@@ -1,67 +1,63 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from api.database import get_db, get_all_tasks
 from api.database import store_task
 from api.config import client
-from api.models.schemas import TaskInput, TaskOutput
+from api.models.schemas import TaskInput, TaskOutput, TaskUpdate
+from api.services.task_service import TaskService
 
 from api.utils.postprocess import process_parsed_task
 
 router = APIRouter()
+task_service = TaskService()
 
 
-@router.post("/parse-task", response_model=TaskOutput)
-async def parse_task(task: TaskInput, db: AsyncSession = Depends(get_db)):
-    """
-    Parses a task description using OpenAI and assigns a category and due-date automatically.
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            max_tokens=100,
-            messages=[
-                {"role": "user", "content": f"""
-                    Extract task details as JSON:
-                    - `name`: Short task name.
-                    - `due_date`: If a deadline is mentioned.
-                    - `priority`: High, Medium, or Low (determine urgency based on words like "urgent", "ASAP", "before [date]", "immediately", or time-sensitive tasks).
-                    - `category`: Work, Personal, Finance, etc.
-
-                    Task: {task.description}
-
-                    Rules for priority:
-                    - **High**: If the task includes words like "urgent", "ASAP", "immediately", or has a strict deadline.
-                    - **Medium**: If the task has a deadline but no urgency.
-                    - **Low**: If it's a general task with no urgency.
-
-                    Respond ONLY with a valid JSON object.
-                    """
-                 }
-            ]
-        )
-
-        # Log token usage
-        tokens_used = response.usage.total_tokens
-        print(f"Tokens used: {tokens_used}")
-        parsed_task = process_parsed_task(response=response, task_description=task.description)
-        print(f"parsed_task: {parsed_task}")
-
-        # Get the complete task object
-        db_task = await store_task(db, parsed_task)
-
-        # The TaskOutput model will automatically convert the SQLAlchemy model
-        return TaskOutput.model_validate(db_task)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+@router.post("/", response_model=TaskOutput)
+async def create_task(task: TaskInput, db: AsyncSession = Depends(get_db)):
+    """Create a new task"""
+    return await task_service.parse_and_create_task(task, db)
 
 
 @router.get("/", response_model=List[TaskOutput])
 async def get_tasks(db: AsyncSession = Depends(get_db)):
-    """
-    Retrieves all tasks from the database asynchronously.
-    """
-    return await get_all_tasks(db=db)
+    """Get all tasks"""
+    return await task_service.get_all_tasks(db)
+
+
+@router.get("/{task_id}", response_model=TaskOutput)
+async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
+    """Get a specific task by ID"""
+    task = await task_service.get_task_by_id(task_id, db)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@router.put("/{task_id}", response_model=TaskOutput)
+async def update_task(task_id: int, task_update: TaskUpdate, db: AsyncSession = Depends(get_db)):
+    """Update a task"""
+    updated_task = await task_service.update_task(task_id, task_update.dict(exclude_unset=True), db)
+    if not updated_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return updated_task
+
+
+@router.delete("/{task_id}", response_model=bool)
+async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a task"""
+    deleted = await task_service.delete_task(task_id, db)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return True
+
+
+@router.get("/search", response_model=List[TaskOutput])
+async def search_tasks(
+        query: str = Query(..., description="Natural language search query"),
+        db: AsyncSession = Depends(get_db)
+):
+    """Search tasks using natural language"""
+    return await task_service.search_tasks(query, db)
