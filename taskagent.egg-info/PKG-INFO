@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: taskagent
+Version: 0.1
+License-File: LICENSE
+Requires-Dist: fastapi
+Requires-Dist: sqlalchemy
+Requires-Dist: alembic
+Requires-Dist: asyncpg
+Requires-Dist: uvicorn

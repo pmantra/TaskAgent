@@ -1,8 +1,6 @@
-from datetime import datetime
-import holidays
+from datetime import datetime, timedelta
 import json
 from json.decoder import JSONDecodeError
-from fastapi import HTTPException
 from openai.types.chat import ChatCompletion
 
 
@@ -24,28 +22,32 @@ def infer_priority(task_description: str, priority: str) -> str:
     return "Low"  # Default to Low if no urgency is found
 
 
-def correct_due_date(due_date: str) -> str:
-    """Ensures the due date is set to the current year."""
-    current_year = datetime.now().year
-    due_date_lower = due_date.lower()
-    us_holidays = holidays.country_holidays('US', years=current_year)
+def convert_to_valid_date(due_date_str: str) -> str:
+    """
+    Converts natural language dates like "Friday" into a valid ISO date (YYYY-MM-DD).
+    """
+    try:
+        # Handle relative days like "Friday"
+        if due_date_str.lower() in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
+            today = datetime.today()
+            days_ahead = (["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].index(
+                due_date_str.lower()) - today.weekday()) % 7
+            if days_ahead == 0:  # If today is the same day, schedule it for next week
+                days_ahead = 7
+            return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
-    # Ensure "Tax Day" is correctly set to the current year's April 15
-    if due_date.lower() in ["tax day", "april 15", "4/15"]:
-        return f"{current_year}-04-15"
+        # Try parsing a normal date
+        parsed_date = datetime.strptime(due_date_str, "%Y-%m-%d")
+        return parsed_date.strftime("%Y-%m-%d")
 
-    for year in [current_year, current_year + 1]:
-        for date, name in  us_holidays.items():
-            if date.year == year and name.lower() == due_date_lower:
-                return date.strftime("%Y-%m-%d")
-
-    return due_date
+    except ValueError:
+        return "Invalid Date"
 
 
 def process_parsed_task(response: ChatCompletion, task_description: str) -> dict:
     """Parses and validates the GPT response, ensuring the correct format."""
     if not response or not response.choices:
-        raise HTTPException(status_code=500, detail="Invalid response format from OpenAI")
+        raise ValueError("Invalid OpenAI response format")
 
     try:
         content = response.choices[0].message.content
@@ -56,8 +58,8 @@ def process_parsed_task(response: ChatCompletion, task_description: str) -> dict
         raise ValueError("OpenAI returned an invalid JSON response")
 
     # Correct the due date if necessary
-    if "due_date" in parsed_task:
-        parsed_task["due_date"] = correct_due_date(parsed_task["due_date"])
+    if "due_date" in parsed_task and isinstance(parsed_task["due_date"], str):
+        parsed_task["due_date"] = convert_to_valid_date(parsed_task["due_date"])
 
     # Correct priority if OpenAI failed to infer it
     if "priority" in parsed_task:

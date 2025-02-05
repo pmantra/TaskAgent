@@ -1,32 +1,35 @@
-FROM python:3.9
+FROM python:3.9-slim
 
-# Install system dependencies (including PostgreSQL client libraries)
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
     gcc \
-    wget \
-    curl \
-    libssl-dev \
-    libffi-dev \
-    libxml2-dev \
-    libxslt1-dev \
-    libjpeg-dev \
-    zlib1g-dev \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements file first (for better caching)
-COPY requirements.txt /app/
+# Copy requirements first for better layer caching
+COPY requirements.txt .
 
-# Upgrade pip and install dependencies
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Now copy the rest of the application
-COPY . /app/
+# Copy the rest of the application
+COPY . .
+
+# Create non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Make the entrypoint script executable
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8000
 
-# Start the FastAPI app
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

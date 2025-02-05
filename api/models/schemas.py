@@ -1,7 +1,7 @@
 from datetime import date, datetime
+from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -15,9 +15,9 @@ class TaskInput(BaseModel):
 class TaskOutput(BaseModel):
     id: int
     name: str
-    due_date: date
-    priority: str
-    category: str
+    due_date: Optional[date]
+    priority: Optional[str]
+    category: Optional[str]
     created_at: datetime
     updated_at: datetime
 

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: taskagent-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agent}
+      POSTGRES_DB: ${DB_NAME:-taskagent}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - taskagent-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taskagent-network
+
+  taskagent-api:  # Changed from 'api' to 'taskagent-api'
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taskagent-api
+    environment:
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-agent}
+      - DB_HOST=taskagent-db
+      - DB_NAME=${DB_NAME:-taskagent}
+      - DB_PORT=${DB_PORT:-5432}
+      - ENV=${ENV:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - APPLY_MIGRATIONS=true
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - taskagent-network
+    volumes:
+      - .:/app
+    command: sh -c "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+
+networks:
+  taskagent-network:
+    driver: bridge
+
+volumes:
+  taskagent-data:
