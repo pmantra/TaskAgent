@@ -106,6 +106,18 @@ class TaskRepository:
         query = select(Task)
         conditions = []
 
+        # First: Add exact match conditions (fast index lookups)
+        if priority:
+            conditions.append(Task.priority == priority)
+
+        if category:
+            conditions.append(Task.category == category)
+
+        if start_date:
+            conditions.append(Task.due_date >= start_date)
+        if end_date:
+            conditions.append(Task.due_date <= end_date)
+
         # Add full-text search if provided
         if search_vector_query:
             # Convert query to tsquery
@@ -117,20 +129,22 @@ class TaskRepository:
                 func.ts_rank_cd(Task.search_vector, ts_query).desc()
             )
 
-        # Add exact filters
-        if priority:
-            conditions.append(Task.priority == priority)
+        # Last: Add full-text search (more expensive)
+        if search_vector_query:
+            search_terms = [
+                term for term in search_vector_query.lower().split()
+                if term not in ['priority', 'high', 'medium', 'low']
+            ]
 
-        if category:
-            conditions.append(Task.category == category)
+            if search_terms:
+                ts_query = func.plainto_tsquery('english', ' '.join(search_terms))
+                conditions.append(Task.search_vector.op('@@')(ts_query))
+                # Add ordering only if we're doing text search
+                query = query.order_by(
+                    func.ts_rank_cd(Task.search_vector, ts_query).desc()
+                )
 
-        # Add date range filters
-        if start_date:
-            conditions.append(Task.due_date >= start_date)
-        if end_date:
-            conditions.append(Task.due_date <= end_date)
-
-        # Combine all conditions with AND
+        # Apply all conditions
         if conditions:
             query = query.filter(and_(*conditions))
 

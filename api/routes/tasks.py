@@ -21,6 +21,15 @@ async def create_task(task: TaskInput, db: AsyncSession = Depends(get_db)):
     return await task_service.parse_and_create_task(task, db)
 
 
+@router.get("/search", response_model=List[TaskOutput])
+async def search_tasks(
+        query: str = Query(..., description="Natural language search query"),
+        db: AsyncSession = Depends(get_db)
+):
+    """Search tasks using natural language"""
+    return await task_service.search_tasks(query=query, db=db)
+
+
 @router.get("/", response_model=List[TaskOutput])
 async def get_tasks(db: AsyncSession = Depends(get_db)):
     """Get all tasks"""
@@ -30,7 +39,7 @@ async def get_tasks(db: AsyncSession = Depends(get_db)):
 @router.get("/{task_id}", response_model=TaskOutput)
 async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific task by ID"""
-    task = await task_service.get_task_by_id(task_id, db)
+    task = await task_service.get_task_by_id(task_id=task_id, db=db)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -52,12 +61,3 @@ async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     return True
-
-
-@router.get("/search", response_model=List[TaskOutput])
-async def search_tasks(
-        query: str = Query(..., description="Natural language search query"),
-        db: AsyncSession = Depends(get_db)
-):
-    """Search tasks using natural language"""
-    return await task_service.search_tasks(query, db)

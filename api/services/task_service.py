@@ -1,17 +1,16 @@
 from typing import List, Optional, Dict, Any
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.config import client
 from api.models.schemas import TaskOutput, TaskInput
 from api.repositories.task_repository import TaskRepository
+from api.services.llm_service import LLMService
 from api.utils.postprocess import process_parsed_task
 
 
 class TaskService:
     def __init__(self):
-        self.client = client
+        self.llm_service = LLMService()
 
     async def get_all_tasks(self, db: AsyncSession) -> list[TaskOutput]:
         repository = TaskRepository(db)
@@ -20,7 +19,7 @@ class TaskService:
 
     async def parse_and_create_task(self, task_input: TaskInput, db: AsyncSession) -> TaskOutput:
         repository = TaskRepository(db)
-        response = self._get_openai_parsing(task_input.description)
+        response = self.llm_service.parse_task_description(task_input.description)
         parsed_task = process_parsed_task(response=response, task_description=task_input.description)
         db_task = await repository.create(parsed_task)
         return TaskOutput.model_validate(db_task)
@@ -43,63 +42,28 @@ class TaskService:
             self,
             db: AsyncSession,
             query: str = None,
-            filters: dict = None
     ) -> List[TaskOutput]:
-        repository = TaskRepository(db)
-
-        tasks = await repository.search(
-            search_vector_query=query,
-            priority=filters.get('priority'),
-            category=filters.get('category'),
-            start_date=filters.get('start_date'),
-            end_date=filters.get('end_date')
-        )
-
-        return [TaskOutput.model_validate(task) for task in tasks]
-
-    def _get_openai_parsing(self, description: str):
-        """
-        Parses a task description using OpenAI and assigns a category and due-date automatically.
-        """
+        """Search tasks using LLM for query parsing"""
         try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                max_tokens=100,
-                messages=[
-                    {"role": "user", "content": f"""
-                                Extract task details as JSON:
-                                - `name`: Short task name.
-                                - `due_date`: Date in YYYY-MM-DD format, or null if no date mentioned.
-                                - `priority`: High, Medium, or Low (determine urgency based on words like "urgent", "ASAP", "before [date]", "immediately", or time-sensitive tasks).
-                                - `category`: Work, Personal, Finance, etc.
+            cleaned_query = query.replace('"', '').strip()
+            search_params = self.llm_service.parse_search_query(cleaned_query)
 
-                                Task: {description}
+            # Only pass search_terms if they're not just priority-related
+            search_terms = search_params.get('search_terms', '').lower()
+            if all(term in ['high', 'priority', 'medium', 'low'] for term in search_terms.split()):
+                search_terms = None
 
-                                Rules:
-                                - dates MUST be in YYYY-MM-DD format or null
-                                - priority must be High/Medium/Low based on:
-                                  * High: urgent, ASAP, immediate, strict deadline
-                                  * Medium: has deadline but no urgency
-                                  * Low: general task with no urgency
-
-                                Example response:
-                                {{
-                                    "name": "Submit tax documents",
-                                    "due_date": "2025-04-15",
-                                    "priority": "High",
-                                    "category": "Finance"
-                                }}
-
-                                Respond ONLY with a valid JSON object.
-                                """
-                     }
-                ]
+            repository = TaskRepository(db)
+            tasks = await repository.search(
+                search_vector_query=search_terms,
+                priority=search_params.get("priority"),
+                category=search_params.get("category"),
             )
-
-            # Log token usage
-            tokens_used = response.usage.total_tokens
-            print(f"Tokens used: {tokens_used}")
-            return response
-
+            return [TaskOutput.model_validate(task) for task in tasks]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+            print(f"Search error: {str(e)}")  # Debug log
+            raise
+
+
+
+
