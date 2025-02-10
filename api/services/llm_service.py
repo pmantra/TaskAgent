@@ -46,8 +46,9 @@ class LLMService:
         # Log token usage
         tokens_used = response.usage.total_tokens
         print(f"Tokens used: {tokens_used}")
-
-        return json.loads(response.choices[0].message.content)
+        result = json.loads(response.choices[0].message.content)
+        print(f"LLM parsed result: {result}")  # Debug log
+        return result
 
     def parse_task_description(self, description: str):
         """

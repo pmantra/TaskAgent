@@ -102,6 +102,12 @@ class TaskRepository:
                 start_date=datetime.now()
             )
         """
+        print(f"""
+            Search parameters:
+            - search_vector_query: {search_vector_query}
+            - priority: {priority}
+            - category: {category}
+            """)  # Debug log
         # Start with base query
         query = select(Task)
         conditions = []
@@ -109,9 +115,11 @@ class TaskRepository:
         # First: Add exact match conditions (fast index lookups)
         if priority:
             conditions.append(Task.priority == priority)
+            print(f"Added priority condition: {priority}")
 
         if category:
             conditions.append(Task.category == category)
+            print(f"Added category condition: {category}")
 
         if start_date:
             conditions.append(Task.due_date >= start_date)
@@ -120,26 +128,15 @@ class TaskRepository:
 
         # Add full-text search if provided
         if search_vector_query:
-            # Convert query to tsquery
-            ts_query = func.plainto_tsquery('english', search_vector_query)
-            # Add full-text search condition
-            conditions.append(Task.search_vector.op('@@')(ts_query))
-            # Add ordering by rank for full-text search results
-            query = query.order_by(
-                func.ts_rank_cd(Task.search_vector, ts_query).desc()
-            )
-
-        # Last: Add full-text search (more expensive)
-        if search_vector_query:
             search_terms = [
                 term for term in search_vector_query.lower().split()
-                if term not in ['priority', 'high', 'medium', 'low']
+                if term not in ['priority', 'high', 'medium', 'low', 'show', 'me', 'all', 'tasks', 'finance', 'work',
+                                'personal']
             ]
-
-            if search_terms:
+            if search_terms:  # Only use search if we have other meaningful terms
+                print(f"Adding search for terms: {search_terms}")
                 ts_query = func.plainto_tsquery('english', ' '.join(search_terms))
                 conditions.append(Task.search_vector.op('@@')(ts_query))
-                # Add ordering only if we're doing text search
                 query = query.order_by(
                     func.ts_rank_cd(Task.search_vector, ts_query).desc()
                 )

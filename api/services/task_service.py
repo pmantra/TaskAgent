@@ -50,7 +50,8 @@ class TaskService:
 
             # Only pass search_terms if they're not just priority-related
             search_terms = search_params.get('search_terms', '').lower()
-            if all(term in ['high', 'priority', 'medium', 'low'] for term in search_terms.split()):
+            if all(term in ['high', 'medium', 'low', 'priority', 'finance', 'work', 'personal']
+                   for term in search_terms.split()):
                 search_terms = None
 
             repository = TaskRepository(db)
