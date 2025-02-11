@@ -27,7 +27,12 @@ async def search_tasks(
         db: AsyncSession = Depends(get_db)
 ):
     """Search tasks using natural language"""
-    return await task_service.search_tasks(query=query, db=db)
+    results = await task_service.search_tasks(query=query, db=db)
+
+    # Sort by confidence score (highest first)
+    results.sort(key=lambda task: task.confidence_score, reverse=True)
+
+    return results
 
 
 @router.get("/", response_model=List[TaskOutput])

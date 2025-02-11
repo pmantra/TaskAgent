@@ -59,34 +59,50 @@ class LLMService:
                 model="gpt-3.5-turbo",
                 max_tokens=100,
                 messages=[
-                    {"role": "user", "content": f"""
-                                Extract task details as JSON:
-                                - `name`: Short task name.
-                                - `due_date`: Date in YYYY-MM-DD format, or null if no date mentioned.
-                                - `priority`: High, Medium, or Low (determine urgency based on words like "urgent", "ASAP", "before [date]", "immediately", or time-sensitive tasks).
-                                - `category`: Work, Personal, Finance, etc.
+                    {
+                        "role": "system",
+                        "content": """You are a task management assistant that analyzes tasks and provides structured data.
+                        You must always return a confidence_score (0-100) indicating your certainty in the analysis.
+                        
+                        Confidence Score Guidelines:
+                        - 90-100: Very clear task with explicit deadline and priority indicators
+                        - 70-89:  Clear task with some explicit indicators
+                        - 50-69:  Basic task with implicit indicators
+                        - 0-49:   Ambiguous task with minimal context
+                        """
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""
+                Extract structured data from this task description. Return a JSON object with:
 
-                                Task: {description}
+                - name: Short, clear task name
+                - due_date: Date in YYYY-MM-DD format, or null if not specified
+                - priority: Based on these rules:
+                    * High: Contains "urgent", "ASAP", "immediately", "before [date]"
+                    * Medium: Has deadline but no urgency
+                    * Low: No time sensitivity
+                - category: Work/Personal/Finance/Other
+                - confidence_score: Your certainty (0-100) based on:
+                    * Clarity of task description
+                    * Presence of explicit deadline
+                    * Clear priority indicators
+                    * Category clarity
 
-                                Rules:
-                                - dates MUST be in YYYY-MM-DD format or null
-                                - priority must be High/Medium/Low based on:
-                                  * High: urgent, ASAP, immediate, strict deadline
-                                  * Medium: has deadline but no urgency
-                                  * Low: general task with no urgency
+                Example response:
+                {{
+                    "name": "Submit tax documents",
+                    "due_date": "2025-04-15",
+                    "priority": "High",
+                    "category": "Finance",
+                    "confidence_score": 95
+                }}
 
-                                Example response:
-                                {{
-                                    "name": "Submit tax documents",
-                                    "due_date": "2025-04-15",
-                                    "priority": "High",
-                                    "category": "Finance"
-                                }}
-
-                                Respond ONLY with a valid JSON object.
-                                """
-                     }
+                Task Description: {description}
+                """
+                    }
                 ]
+
             )
 
             # Log token usage

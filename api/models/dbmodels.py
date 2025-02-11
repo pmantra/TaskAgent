@@ -10,6 +10,8 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     due_date = Column(Date, nullable=True)
+    confidence_score = Column(Integer, nullable=False, default=50)
+    priority_source = Column(String, nullable=False, default='ai')
     priority = Column(String, nullable=True)
     category = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
