@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, update as sql_update, delete as sql_delete, func, and_
+from sqlalchemy import select, update as sql_update, delete as sql_delete, func, and_, cast, literal
 
+from api.models.custom_types import Vector
 from api.models.dbmodels import Task
 
 
@@ -148,3 +149,35 @@ class TaskRepository:
         # Execute query and return results
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def find_similar_by_embedding(
+            self,
+            embedding: List[float],
+            threshold: float = 0.85,
+            limit: int = 5
+    ) -> List[tuple[Task, float]]:
+        """Find similar tasks using cosine similarity"""
+        try:
+            print(f"\nSearching with threshold: {threshold}")
+            print(f"Embedding type: {type(embedding)}")
+            print(f"Embedding length: {len(embedding) if embedding else 'None'}")
+
+            # Create the similarity expression once
+            similarity_expr = (literal(1.0) - Task.embedding.op('<=>')(embedding)).label('similarity')
+
+            query = (
+                select(Task, similarity_expr)
+                .filter(Task.embedding.is_not(None))
+                .filter(similarity_expr > threshold)
+                .order_by(similarity_expr.desc())
+                .limit(limit)
+            )
+
+            result = await self.db.execute(query)
+            return result.all()
+
+        except Exception as e:
+            print(f"Search error: {str(e)}")
+            print(f"Error type: {type(e)}")
+            print(f"Query parameters: {embedding[:5] if embedding else None}")  # Debug first few values
+            return []

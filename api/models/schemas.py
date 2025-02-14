@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.declarative import declarative_base
@@ -37,6 +37,8 @@ class TaskOutput(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+    # embedding: Optional[List[float]]
+    similarity_score: Optional[float] = None
 
     class Config:
         from_attributes = True

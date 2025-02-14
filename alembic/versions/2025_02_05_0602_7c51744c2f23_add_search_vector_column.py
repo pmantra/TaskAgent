@@ -28,6 +28,35 @@ def upgrade() -> None:
                   sa.Column('search_vector', postgresql.TSVECTOR)
                   )
 
+    # Create GIN index for search_vector
+    op.create_index(
+        'idx_task_search_vector',
+        'tasks',
+        ['search_vector'],
+        postgresql_using='gin'
+    )
+
+    # Create function to generate search vector
+    op.execute("""
+        CREATE OR REPLACE FUNCTION tasks_search_vector_update() RETURNS trigger AS $$
+        BEGIN
+            NEW.search_vector :=
+                setweight(to_tsvector('english', COALESCE(NEW.name, '')), 'A') ||
+                setweight(to_tsvector('english', COALESCE(NEW.category, '')), 'B') ||
+                setweight(to_tsvector('english', COALESCE(NEW.priority, '')), 'C');
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
+
+    # Create trigger
+    op.execute("""
+        CREATE TRIGGER tasks_search_vector_trigger
+            BEFORE INSERT OR UPDATE ON tasks
+            FOR EACH ROW
+            EXECUTE FUNCTION tasks_search_vector_update();
+    """)
+
     # Update existing rows to populate search vector
     op.execute("""
         UPDATE tasks
@@ -39,4 +68,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Drop trigger first
+    op.execute("DROP TRIGGER IF EXISTS tasks_search_vector_trigger ON tasks")
+
+    # Drop function
+    op.execute("DROP FUNCTION IF EXISTS tasks_search_vector_update")
+
+    # Drop index
+    op.drop_index('idx_task_search_vector', table_name='tasks')
+
+    # Drop column
     op.drop_column('tasks', 'search_vector')

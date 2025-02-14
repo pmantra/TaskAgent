@@ -18,3 +18,7 @@ pydantic~=2.10.6
 pydantic-settings
 asyncpg
 alembic>=1.7.0
+pgvector~=0.3.6
+numpy~=1.26.4
+requests~=2.32.3
+setuptools~=69.0.3

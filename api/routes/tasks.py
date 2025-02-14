@@ -1,18 +1,21 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from api.database import get_db, get_all_tasks
-from api.database import store_task
-from api.config import client
+from api.database import get_db
 from api.models.schemas import TaskInput, TaskOutput, TaskUpdate
+from api.services.embedding_service import EmbeddingService
+from api.services.llm_service import LLMService
 from api.services.task_service import TaskService
 
 from api.utils.postprocess import process_parsed_task
 
 router = APIRouter()
-task_service = TaskService()
+
+# Instantiate services
+llm_service = LLMService()
+embedding_service = EmbeddingService()
+task_service = TaskService(llm_service=llm_service, embedding_service=embedding_service)
 
 
 @router.post("/", response_model=TaskOutput)
@@ -24,15 +27,28 @@ async def create_task(task: TaskInput, db: AsyncSession = Depends(get_db)):
 @router.get("/search", response_model=List[TaskOutput])
 async def search_tasks(
         query: str = Query(..., description="Natural language search query"),
+        threshold: float = Query(0.5, ge=0, le=1.0),
         db: AsyncSession = Depends(get_db)
 ):
-    """Search tasks using natural language"""
-    results = await task_service.search_tasks(query=query, db=db)
+    """Search tasks with debug info"""
+    print(f"\nSearch request:")
+    print(f"Query: {query}")
+    print(f"Threshold: {threshold}")
 
-    # Sort by confidence score (highest first)
-    results.sort(key=lambda task: task.confidence_score, reverse=True)
-
-    return results
+    try:
+        results = await task_service.search_tasks(
+            query=query,
+            threshold=threshold,
+            db=db
+        )
+        print(f"Found {len(results)} results")
+        return results
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Search error: {str(e)}"
+        )
 
 
 @router.get("/", response_model=List[TaskOutput])

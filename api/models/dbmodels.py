@@ -1,7 +1,10 @@
-from sqlalchemy import Column, Integer, String, DateTime, func, Date, Index
-from sqlalchemy.dialects.postgresql import TSVECTOR
 
-from api.models.base import Base
+from sqlalchemy import Column, Integer, String, Date, DateTime, func, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.ext.declarative import declarative_base
+from api.models.custom_types import Vector
+
+Base = declarative_base()
 
 
 class Task(Base):
@@ -10,19 +13,23 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     due_date = Column(Date, nullable=True)
-    confidence_score = Column(Integer, nullable=False, default=50)
-    priority_source = Column(String, nullable=False, default='ai')
     priority = Column(String, nullable=True)
     category = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    confidence_score = Column(Integer, nullable=False, server_default='50')
+    priority_source = Column(String, nullable=False, server_default='ai')
+    embedding = Column(Vector(1536), nullable=True)
     search_vector = Column(TSVECTOR)
 
-    # Create a GIN index for faster full-text search
+
     __table_args__ = (
-        Index(
-            'idx_task_search_vector',
-            'search_vector',
-            postgresql_using='gin'
+        CheckConstraint(
+            'confidence_score >= 0 AND confidence_score <= 100',
+            name='tasks_confidence_score_range'
         ),
+        CheckConstraint(
+            "priority_source IN ('ai', 'regex')",
+            name='tasks_priority_source_values'
+        )
     )

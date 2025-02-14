@@ -4,13 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models.schemas import TaskOutput, TaskInput
 from api.repositories.task_repository import TaskRepository
+from api.services.embedding_service import EmbeddingService
 from api.services.llm_service import LLMService
 from api.utils.postprocess import process_parsed_task
 
 
 class TaskService:
-    def __init__(self):
-        self.llm_service = LLMService()
+    def __init__(self, llm_service: LLMService, embedding_service: EmbeddingService):
+        self.llm_service = llm_service
+        self.embedding_service = embedding_service
 
     async def get_all_tasks(self, db: AsyncSession) -> list[TaskOutput]:
         repository = TaskRepository(db)
@@ -18,10 +20,15 @@ class TaskService:
         return [TaskOutput.model_validate(task) for task in tasks]
 
     async def parse_and_create_task(self, task_input: TaskInput, db: AsyncSession) -> TaskOutput:
-        repository = TaskRepository(db)
+        """Parses, generates embedding, and creates a new task in the database."""
+
+        # Step 1: Parse task using LLM
         response = self.llm_service.parse_task_description(task_input.description)
         parsed_task = process_parsed_task(response=response, task_description=task_input.description)
-        db_task = await repository.create(parsed_task)
+
+        # Step 2: Use EmbeddingService to save the task
+        db_task = await self.embedding_service.save_task(db, parsed_task)
+
         return TaskOutput.model_validate(db_task)
 
     async def get_task_by_id(self, task_id: int, db: AsyncSession) -> Optional[TaskOutput]:
@@ -40,30 +47,30 @@ class TaskService:
 
     async def search_tasks(
             self,
+            query: str,
             db: AsyncSession,
-            query: str = None,
+            threshold: float = 0.5
     ) -> List[TaskOutput]:
-        """Search tasks using LLM for query parsing"""
-        try:
-            cleaned_query = query.replace('"', '').strip()
-            search_params = self.llm_service.parse_search_query(cleaned_query)
+        # Generate embedding using EmbeddingService
+        embedding = await self.embedding_service.generate_embedding(query)
 
-            # Only pass search_terms if they're not just priority-related
-            search_terms = search_params.get('search_terms', '').lower()
-            if all(term in ['high', 'medium', 'low', 'priority', 'finance', 'work', 'personal']
-                   for term in search_terms.split()):
-                search_terms = None
+        # Use repository to search database
+        repository = TaskRepository(db)
+        tasks_with_scores = await repository.find_similar_by_embedding(
+            embedding=embedding,
+            threshold=threshold
+        )
 
-            repository = TaskRepository(db)
-            tasks = await repository.search(
-                search_vector_query=search_terms,
-                priority=search_params.get("priority"),
-                category=search_params.get("category"),
+        return [
+            TaskOutput(
+                **{
+                    **task.__dict__,
+                    'similarity_score': float(score)
+                }
             )
-            return [TaskOutput.model_validate(task) for task in tasks]
-        except Exception as e:
-            print(f"Search error: {str(e)}")  # Debug log
-            raise
+            for task, score in tasks_with_scores
+        ]
+
 
 
 
