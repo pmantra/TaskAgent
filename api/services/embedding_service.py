@@ -4,12 +4,14 @@ import asyncio
 from typing import List, Dict, Any
 
 from fastapi import HTTPException
+from langchain_core.documents import Document
 from openai import OpenAI
 from sqlalchemy import select, func, update
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models.dbmodels import Task
+from api.repositories.vector_store import add_document
 
 
 class EmbeddingService:
@@ -49,9 +51,11 @@ class EmbeddingService:
             embedding_text = f"{task_data['name']} {task_data.get('description', '')}"
             print(f"[DEBUG] Generating embedding for task: {embedding_text}")
 
+            # Generate embedding using OpenAI API
             embedding = await self.generate_embedding(embedding_text)
             print(f"[DEBUG] Generated embedding: {True if embedding else False}")
 
+            # Create the task in the database
             db_task = Task(
                 name=task_data["name"],
                 due_date=task_data.get("due_date"),
@@ -60,19 +64,31 @@ class EmbeddingService:
                 embedding=embedding
             )
 
-            print(f"[DEBUG] Task created with embedding: {embedding is not None}")
-
             db.add(db_task)
             await db.commit()
-            print("[DEBUG] Task committed to database")
-
             await db.refresh(db_task)
-            print(f"[DEBUG] Task refreshed, embedding present: {db_task.embedding is not None}")
+
+            # Index the task in Chroma (via LangChain)
+            try:
+                doc_text = f"{db_task.name} {task_data.get('description', '')}"
+                doc = Document(
+                    page_content=doc_text,
+                    metadata={
+                        "task_id": db_task.id,
+                        "priority": db_task.priority,
+                        "category": db_task.category,
+                        "created_at": db_task.created_at.isoformat()
+                    }
+                )
+                add_document(doc)
+            except Exception as chroma_error:
+                print(f"[WARNING] Failed to index task in Chroma: {chroma_error}")
 
             return db_task
 
         except Exception as e:
             print(f"[ERROR] Failed to save task: {str(e)}")
+            await db.rollback()
             raise
 
     def _prepare_text(self, text: str) -> str:

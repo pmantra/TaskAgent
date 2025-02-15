@@ -1,9 +1,12 @@
 from typing import List, Optional, Dict, Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.models.dbmodels import Task
 from api.models.schemas import TaskOutput, TaskInput
 from api.repositories.task_repository import TaskRepository
+from api.repositories.vector_store import search_documents
 from api.services.embedding_service import EmbeddingService
 from api.services.llm_service import LLMService
 from api.utils.postprocess import process_parsed_task
@@ -47,30 +50,55 @@ class TaskService:
 
     async def search_tasks(
             self,
-            query: str,
             db: AsyncSession,
-            threshold: float = 0.5
+            query: str = None,
+            threshold: float = 0.7,
+            max_results: int = 3
     ) -> List[TaskOutput]:
-        # Generate embedding using EmbeddingService
-        embedding = await self.embedding_service.generate_embedding(query)
+        try:
+            # Perform semantic search using Chroma
+            similar_docs = search_documents(query, k=10)
 
-        # Use repository to search database
-        repository = TaskRepository(db)
-        tasks_with_scores = await repository.find_similar_by_embedding(
-            embedding=embedding,
-            threshold=threshold
-        )
+            # Filter and sort documents based on similarity score
+            filtered_docs = [
+                (doc, score) for (doc, score) in similar_docs if score <= threshold
+            ]
 
-        return [
-            TaskOutput(
-                **{
-                    **task.__dict__,
-                    'similarity_score': float(score)
-                }
-            )
-            for task, score in tasks_with_scores
-        ]
+            # Sort by similarity score (lower is more similar)
+            filtered_docs.sort(key=lambda x: x[1])
 
+            # Take top results
+            filtered_docs = filtered_docs[:max_results]
+
+            # Extract task IDs from similar documents
+            similar_task_ids = [int(doc.metadata['task_id']) for doc, _ in filtered_docs]
+
+            # Fetch full task details from database
+            if similar_task_ids:
+                query = select(Task).where(Task.id.in_(similar_task_ids))
+                result = await db.execute(query)
+                tasks = result.scalars().all()
+
+                # Add similarity scores to the output
+                task_outputs = []
+                for task in tasks:
+                    task_output = TaskOutput.model_validate(task)
+                    # Find the corresponding similarity score
+                    matching_doc = next(
+                        (score for (doc, score) in filtered_docs if int(doc.metadata['task_id']) == task.id), None)
+                    task_output.similarity_score = matching_doc
+                    task_outputs.append(task_output)
+
+                return task_outputs
+
+            # Fallback to traditional search if no semantic matches
+            repository = TaskRepository(db)
+            tasks = await repository.search(search_vector_query=query)
+            return [TaskOutput.model_validate(task) for task in tasks]
+
+        except Exception as e:
+            print(f"Search error: {str(e)}")
+            raise
 
 
 

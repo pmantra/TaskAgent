@@ -21,4 +21,9 @@ alembic>=1.7.0
 pgvector~=0.3.6
 numpy~=1.26.4
 requests~=2.32.3
-setuptools~=69.0.3
+setuptools~=70.0.0
+chromadb
+langchain-community
+tiktoken
+langchain-openai
+langchain-chroma

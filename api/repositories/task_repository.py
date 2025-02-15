@@ -20,6 +20,11 @@ class TaskRepository:
         result = await self.db.execute(select(Task).filter(Task.id == task_id))
         return result.scalar_one_or_none()
 
+    async def get_tasks_by_ids(self, task_ids: List[int]) -> List[Task]:
+        """Get tasks by a list of ids"""
+        result = await self.db.execute(select(Task).filter(Task.id.in_(task_ids)))
+        return result.scalars().all()
+
     async def create(self, task_data: Dict[str, Any]) -> Task:
         """Create a new task with proper date handling"""
         # Ensure due_date is a date object if provided

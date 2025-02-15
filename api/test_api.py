@@ -106,11 +106,11 @@ async def main():
     ]
 
     # Create tasks
-    # created_tasks = []
-    # for description in task_descriptions:
-    #     task = tester.create_task(description)
-    #     if task:
-    #         created_tasks.append(task)
+    created_tasks = []
+    for description in task_descriptions:
+        task = tester.create_task(description)
+        if task:
+            created_tasks.append(task)
 
     # More comprehensive search queries
     search_queries = [
